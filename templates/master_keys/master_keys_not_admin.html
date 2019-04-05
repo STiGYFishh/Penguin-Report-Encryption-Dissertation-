@@ -1,0 +1,21 @@
+{% extends 'master_layout.html' %}
+
+{% block title %}<title>Penguin - Master Keys Not Set</title>{% endblock %}
+
+{% block content %}
+<div class="card mt-5">
+  <div class="card-body">
+    <fieldset>
+      <legend>Master Keys Not Set</legend>
+      <p class="small">The PGP Master Keypair Fingerprint has not been set.</p>
+      <hr>
+      <div class="form-group row">
+        <div class='col-12'>
+          <p>Unfortunately you are unable to do anything about this =( </p>
+          <p class="small">Please contact your local administrator and alert them to the above issue.</p>
+        </div>
+      </div>
+    </fieldset>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends 'master_layout.html' %}
+
+{% block title %}<title>Penguin - Documents</title>{% endblock %}
+
+{% block stylesheets %}
+<link href="{{ static('css/generate_key.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+	<div class="col-12">
+		<div class="card mt-5">
+			<div class="card-body">
+
+				<div class="row">
+					<div class="col-9">
+						<legend class="lead">All Documents</legend>
+						<hr>
+					</div>
+					{% if not 'private_unlocked' in request.session %}
+						<div class="col-12">
+							<h2 class="text-center">Please Unlock Your Private Key! You can do this on the Dashboard!</h2>
+					{% else %}
+						<div class="col-12">
+							<p class="text-muted">Select Document Type</p>
+							<select id="document_type_select" class="form-control">
+								<option value="None"></option>
+							{% for document_type in document_types %}
+								<option value="{{ document_type.id }}">{{document_type.name}}</option>
+							{% endfor %}
+							</select>
+
+							<hr>
+						</div>
+						{% for document_type in document_types %}
+							<div class="col-12 document_type_row mt-3" id="{{ document_type.id }}" style="display:none">
+								{% for document in document_type.document_set.all() %}
+									<div class="row">
+										<div class="col-6">
+											<p class="text-muted">{{ document.title }}</p>
+										</div>
+										<div class="col-2">
+											<a href="/decrypt/{{ document.id }}"><i class="fas fa-download"></i></a>
+										</div>
+									</div>
+								{% endfor %}
+							</div>
+						{% endfor %}
+					{% endif %}
+				</div>
+
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script type="text/javascript">
+	$(document).ready(function(){
+		$(document).on('change', '#document_type_select', function(){
+			$('.document_type_row').each(function(){
+				$(this).hide();
+			});
+
+			$('#' + $(this).val()).fadeIn();
+		});
+	});
+</script>
+{% endblock %}

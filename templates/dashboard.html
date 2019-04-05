@@ -1,0 +1,258 @@
+{% extends 'master_layout.html' %}
+
+{% block title %}<title>Penguin - Dashboard</title>{% endblock %}
+
+{% block stylesheets %}
+<link href="{{ static('css/generate_key.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+	<div class="col-12">
+		<div class="card mt-5">
+			<div class="card-body">
+				<div class="row">
+					<div class="col-9">
+						<legend class="lead">Dashboard</legend>
+					</div>
+					{% if 'enc_websocket_uuid' in request.session %}
+				        <div class="col-3 mt-3">
+				          <button id="debugButton" class="btn btn-block btn-secondary">Show Debug Console</button>
+				        </div>
+				    {% endif %}
+				    	<div class="col-12">
+						<hr>
+						{% if 'enc_websocket_uuid' in request.session %}
+							<p id="status_message" class="lead text-center">Connecting to WebSocket...</p>
+							<div class="row">
+						        <div id="debug_row" class='col-12 mb-3' style="display:none">
+						          <textarea id="debug_window" readonly></textarea>
+						        </div>
+						    </div>
+							{% if document_types %}
+								<form id="upload_form" method="POST" enctype="multipart/form-data" action="/upload-document">
+									<div id="upload-container" class="form-group row" style="display:none">
+										<div class="col-12 mb-3">
+											<legend class="text-center">Upload Document</legend>
+										</div>
+										<div class="col-5 offset-1 form-group">
+											<input class="form-control-file" type="file" id="document" name="document" style="display:none">
+											<label for="document" id="document_label" class="btn btn-block btn-info" >Select Document</label>
+										</div>
+										<div class="col-5 form-group">
+			                                  <select class="form-control" name="document_type" id="document_type">
+			                                    {% for doc_type in document_types %}
+			                                    <option value="{{ doc_type.id }}">{{ doc_type.name }}</option>
+			                                    {% endfor %}
+			                                  </select>
+			                                  <label class="text-muted ml-1" for="document_type">Select Document Type</label>
+										</div>
+										<div class="col-1">
+											<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+											<button type="submit" id="DocumentUpload" class="btn btn-block">
+												<i class="fas fa-upload fa-2x" style="cursor:pointer;color:rgb(23, 162, 184);"></i>
+											</button>
+										</div>
+									</div>
+								</form>
+							{% else %}
+								<p class="text-muted text-center mt-3 mb-3">You don't have access to any document groups. Please contact an adminstrator.</p>
+							{% endif %}
+						{% else %}
+							{% if document_types %}
+								<form id="upload_form" method="POST" enctype="multipart/form-data" action="/upload-document">
+									<div class="form-group row">
+										<div class="col-12 mb-3">
+											<legend class="text-center">Upload Document</legend>
+										</div>
+										<div class="col-5 offset-1 form-group">
+											<input class="form-control-file" type="file" id="document" name="document" style="display:none"></input>
+											<label for="document" id="document_label" class="btn btn-block btn-info" >Select Document</label>
+										</div>
+										<div class="col-5 form-group">
+			                                  <select class="form-control" name="document_type" id="document_type">
+			                                    {% for doc_type in document_types %}
+			                                    <option value="{{ doc_type.id }}">{{ doc_type.name }}</option>
+			                                    {% endfor %}
+			                                  </select>
+			                                  <label class="text-muted ml-1" for="document_type">Select Document Type</label>
+										</div>
+										<div class="col-1">
+											<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+											<button type="submit" id="DocumentUpload" class="btn btn-block">
+												<i class="fas fa-upload fa-2x" style="cursor:pointer;color:rgb(23, 162, 184);"></i>
+											</button>
+										</div>
+									</div>
+								</form>
+							{% else %}
+								<p class="text-muted text-center mt-3 mb-3">You don't have access to any document groups. Please contact an adminstrator.</p>
+							{% endif %}
+						{% endif %}
+						<hr>
+					</div>
+					<div class="col-6 mt-3" style="border-right: 1px solid rgba(0,0,0,0.1)">
+						<legend class="mb-4">Your Uploaded Documents</legend>
+						<div class="row">
+							{% if documents %}
+								{% for document in documents %}
+									<div class="col-12 pr-0">
+										<p class="text-muted text-center clickable">{{ document.title }}</p>
+									</div>
+								{% endfor %}
+							{% else %}
+									<div class="col-12 pr-0">
+										<p class="text-muted text-center mt-4">You haven't uploaded any documents</p>
+									</div>
+							{% endif %}
+							<div class="col-12 pr-0">
+								<p class="text-muted text-center"><a href="/documents">View all Documents</a></p>
+							</div>
+						</div>
+					</div>
+					<div class="col-6 mt-3">
+						<legend class="mb-4">Your PGP Keys</legend>
+						{% for key in pgp_keys %}
+							<div class="row">
+								<div class="col-9 pr-0">
+									<p class="text-muted">{{ key.fingerprint }}</p>
+								</div>
+								<div class="col-1 pl-0">
+									<i class="fas fa-key" style="color:rgb(181, 166, 66)"></i>
+								</div>
+							</div>
+						{% endfor %}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="modal fade" id="unlock_key_model" tabindex="-1" role="dialog" aria-labelledby="unlock_key_model" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exampleModalLabel">Unlock Private Key</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="password" class="form-control" id="private_key_password">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button type="button" id="unlock_key_btn" class="btn btn-warning">Unlock</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script type="text/javascript">
+	$(document).ready(function(){
+		$("#document").change(function(){
+			if($(this)[0]['files'][0].size > 10 * 1024 * 1024 ){
+				$("#document_label").text("File is too Large! Maximum 10Mb")
+				$("#DocumentUpload").attr("disabled", "disabled")
+			} else {
+				$("#document_label").text($(this).val().split("\\").pop());
+				$("#DocumentUpload").removeAttr("disabled");
+			}
+		});
+
+		{% if 'websocket_uuid' in request.session %}
+
+			msg_queue = []
+	        var socket = new WebSocket('wss://' + window.location.host + '/ws/' + '{{ request.session.enc_websocket_uuid }}' + '/');
+
+	        {% if not 'encrypt_command_sent' in request.session %}
+	        socket.onopen = function(e){
+	        	socket.send(JSON.stringify({
+	                'message': {
+	                    "action": "EncryptDocument",
+	                    "websocket_uuid": '{{ request.session.enc_websocket_uuid}}',
+	                    "document_uuid": '{{ request.session.document_upload_id }}',
+	                }
+            	}));
+	        }
+	        {% endif %}
+
+	        socket.onmessage = function(e){
+	            var data = JSON.parse(e.data);
+	            console.log(data);
+
+	            if (data['message']['message_type'] == 'debug_response') {
+	                if (data['message']['message'] !== undefined) {
+	                    $('#debug_window').val($('#debug_window').val() + '\n' + data['message']['message']);
+	                } else {
+	                    delete data['message']['message_type'];
+
+	                    $.each(data, function(key, value) {
+	                        $.each(value, function(index, value) {
+	                            $('#debug_window').val($('#debug_window').val() + "\n" + index + ": " + value);
+	                        });
+	                    });
+	                }
+                	$('#debug_window').scrollTop($('#debug_window')[0].scrollHeight);
+            	}
+
+	            if (data['message']['message_type'] == 'application_response') {
+	                msg_queue.push(data['message']['message']);
+	            } else if (data['message']['message_type'] == 'background_response'){
+	            	if (data['message']['status'] == 'ENC_DONE'){
+	            		$("#debug_window").fadeOut(function(){
+	            			$("#debugButton").hide();
+	            			$("#upload-container").fadeIn();
+	            			msg_queue.push(data['message']['message']);
+	            		});
+	            	}
+		        }
+
+	        }
+
+	        setInterval(function() {
+	            if (msg_queue.length !== 0) {
+	                msg_queue.reverse();
+	                message = msg_queue.pop();
+	                $("#status_message").fadeOut(function() {
+	                    $("#status_message").text(message).fadeIn(500);
+	                });
+	            }
+	        }, 100);
+
+	        $("#debugButton").on('click', function(e) {
+	            $("#debug_row").fadeToggle(500);
+	            $('#debug_window').scrollTop($('#debug_window')[0].scrollHeight);
+	        });
+
+	    {% endif %}
+
+	    $('.fa-key').on('click', function(){
+	    	$('#unlock_key_model').modal('show');
+	    });
+
+	    $('#unlock_key_btn').on('click', function(){
+	    	var password = $('#private_key_password').val();
+
+			$.ajax("/check-key", {
+			   type: "POST",
+			   data: "csrfmiddlewaretoken={{ csrf_token }}&password=" + password,
+			   statusCode: {
+			      200: function (response) {
+			         alert('Sorted');
+			      },
+			      403: function (response) {
+			         alert('Fuck Off');
+			      },
+			      404: function (response) {
+			         alert('Erm, What?');
+			      }
+			   }
+			});
+
+	    });
+	});
+</script>
+{% endblock %}

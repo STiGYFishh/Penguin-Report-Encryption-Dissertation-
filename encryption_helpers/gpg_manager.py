@@ -1,11 +1,24 @@
 from django.conf import settings
-import gnupg
+from django.core.files.base import ContentFile
+from django.core.exceptions import ImproperlyConfigured
+
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+import hashlib
 import subprocess
-from zipfile import ZipFile
+
+from core.encryption_helpers import gnupg
+from core.models import PGPKey, Document, DocumentType
+
+import os
+import uuid
 
 
 class GPGManager:
-    def __init__(self):
+    def __init__(self, uuid):
+        self.uuid = uuid
+
         try:
             self.gnupg_home = settings.GNUPG_HOME
         except django.core.exceptions.ImproperlyConfigured:
@@ -19,12 +32,14 @@ class GPGManager:
         self.gpg = gnupg.GPG(
             gnupghome=self.gnupg_home,
             keyring=self.gnupg_keyring,
+            logger_name = self.uuid
         )
 
 
 class KeyManager(GPGManager):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, uuid):
+        super().__init__(uuid)
+
 
     def create_key(self, name, email, passphrase):
         key = self.gpg.gen_key(
@@ -36,7 +51,7 @@ class KeyManager(GPGManager):
                 key_length=2048,
             )
         )
-        self.trust_keys([key.fingerprint], 'TRUST_FULLY')
+        self.trust_keys(key.fingerprint, 'TRUST_FULLY')
 
         return key
 
@@ -62,7 +77,10 @@ class KeyManager(GPGManager):
         if delete_public:
             delete_status['public'] = str(self.gpg.delete_keys(key.fingerprint))
 
-        return delete_status
+        if delete_status != 'ok':
+            return {'status':error, 'message':delete_status}
+
+        return {'status':'OK', 'message':delete_status}
 
     def trust_keys(self, fingerprints, trust_level):
         # fingerprints is a list of fingerprints of keys for which the trust level is to be set.
@@ -70,7 +88,7 @@ class KeyManager(GPGManager):
         self.gpg.trust_keys(fingerprints, trust_level)
 
     def generate_master_keypair(self, name, email, passphrase):
-        key = self.create_key(name, email, passphrase)
+        key = self.create_key(name, email, "")
         self.trust_keys([key.fingerprint], 'TRUST_ULTIMATE')
 
         return key.fingerprint
@@ -86,38 +104,141 @@ class EncryptionManager(GPGManager):
     Plaintext files will be removed using srm and the DoD 7 Pass technique.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, uuid):
+        super().__init__(uuid)
 
         try:
             self.master_fingerprint = settings.GNUPG_MASTER_FINGERPRINT
             if not self.master_fingerprint:
                 raise ValueError('GNUPG_MASTER_FINGERPRINT has not been set')
-        except django.core.exceptions.ImproperlyConfigured:
+        except ImproperlyConfigured:
             raise ValueError('GNUPG_MASTER_FINGERPRINT has not been set')
 
+    def sha256_checksum(self, data, file=True):
+        hasher = hashlib.sha256()
+
+        if file:
+            with open(data, 'rb') as stream:
+                for chunk in iter(lambda: stream.read(4096), b''):
+                    hasher.update(chunk)
+        else:
+            hasher.update(data.encode())
+
+        return hasher.hexdigest()
+
     def secure_remove(self, file):
-        secure_rm = subprocess.check_call(['srm', '-s', file])
-        if secure_rm != 0:
-            raise EnvironmentError('srm failed to securely erase the original plaintext file')       
+        try:
+            secure_rm = subprocess.check_call(['srm', '-s', file])
+        except subprocess.CalledProccessError:
+            raise EnvironmentError('srm failed to securely erase the original plaintext file')
 
-    def encrypt(self, file, recipients):
-        if self.master_fingerprint not in recipients:
-            self.secure_remove(file)
-            raise ValueError('master key fingerprint is not present in list of recipients')
+        return secure_rm
 
-        with open(file, 'rb') as file_stream:
-            encryted_data = self.gpg.encrypt_file(file_stream, recipients)
-        with open(f'{file}.gpg','w') as document:
-            document.write(encryted_data)
+    def encrypt(self, file_uuid):
+        document = Document.objects.filter(pk=file_uuid).first()
 
-        self.secure_remove(file)
+        if document:
+            document_fullpath = os.path.join(settings.MEDIA_ROOT, document.document.name)
+            document_path = document.document.name
+            document_name = document.document.name.split('/')[-1]
 
-        return f'{file}.gpg'
+            checksum = self.sha256_checksum(document_fullpath)
 
-    def encrypt_zip(self, files, archive_name, recipients):
-        with ZipFile(archive_name, mode='w') as archive:
-            for file in files:
-                archive.write(file)
-        
-        return self.encrypt(archive_name, recipients)
+            users = []
+
+            groups = document.document_type.groups.all()
+            for group in groups:
+                for user in group.user_set.all():
+                    if user not in users:
+                        users.append(user)
+
+            recipients = [self.master_fingerprint]
+
+            if users:
+                for user in users:
+                    key = PGPKey.objects.filter(created_by=user).first()
+                    if key and key.fingerprint:
+                        recipients.append(key.fingerprint)
+
+
+            with open(document_fullpath, 'rb') as file_stream:
+                encrypted_data = self.gpg.encrypt_file(file_stream, recipients, always_trust=True)
+                if not encrypted_data.ok:
+                    layer = get_channel_layer()
+                    async_to_sync(layer.send)(
+                        'secure-remove',
+                        {
+                        'type':'remove',
+                        'file': document_fullpath,
+                        }
+                    )
+                    return {'status': 'error', 'message':encrypted_data.status}
+
+                file_content = str(encrypted_data)
+
+            file_content = ContentFile(file_content)
+            document.document.save(f'{document_name}.gpg', file_content)
+            print(f'{document_path}.gpg')
+            document.checksum = checksum
+            document.save()
+
+            layer = get_channel_layer()
+            async_to_sync(layer.send)(
+                'secure-remove',
+                {
+                'type':'remove',
+                'file': document_fullpath,
+                }
+            )
+
+            return {'status':'OK'}
+        return {'status': 'error', 'message':'File does not Exist.'}
+
+
+    def decrypt(self, file_uuid, passphrase):
+        document = Document.objects.filter(pk=file_uuid).first()
+
+        if document:
+            document_fullpath = os.path.join(settings.MEDIA_ROOT, document.document.name)
+            save_path = os.path.join(settings.MEDIA_ROOT, "TMP", str(uuid.uuid4()))
+
+            with open(document_fullpath, 'rb') as encrypted_data:
+                decrypted_file = self.gpg.decrypt_file(encrypted_data,
+                    passphrase=passphrase,
+                    output=save_path
+                )
+
+                if not decrypted_file.ok:
+                    return {'status': 'error', 'message':document.status}
+
+                if not self.sha256_checksum(save_path) == document.checksum:
+                    return {'status': 'error', 'message':'Checksum does not match original file.'}
+
+            return {'status':'OK', 'document':save_path}
+        return {'status': 'error', 'message':'File does not Exist.'}
+
+
+    def re_encrypt(self, file_uuid, passphrase):
+        document = Document.objects.filter(pk=file_uuid).first()
+
+        if document:
+            decrypted_file = self.decrypt(file_uuid, passphrase)
+
+            if decrypted_file['status'] == 'OK':
+                decrypted_file = decrypted_file['document']
+                file_content = ContentFile(decrypted_file)
+
+                document.document.save(f'{document.title}', file_content)
+                document.save()
+
+            else:
+                return decrypted_file
+
+            encrypted_data = self.encrypt(file_uuid)
+            del decrypted_file
+
+            if not encrypted_data['status'] == 'OK':
+                return {'status': False, 'message':encryted_data}
+
+            return {'status':True}
+        return {'status': 'error', 'message':'File does not Exist.'}

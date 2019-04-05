@@ -1,0 +1,113 @@
+{% extends 'master_layout.html' %}
+
+{% block title %}<title>Penguin - Master Keys Not Set</title>{% endblock %}
+
+{% block content %}
+<div class="card mt-5">
+  <div class="card-body">
+    <form method="POST">
+      <fieldset>
+        <legend>Master Keys Not Set</legend>
+        <p class="small">The PGP Master Keypair Fingerprint has not been set.</p>
+        <hr>
+        <p class="lead">Generate a New Key</p>
+        <div class="form-group row mt-4" style="max-height: 35px">
+            <div class="col-sm-12">
+              <input class="input_underline" type="text" name="{{ form.realname.html_name }}" class="form-control-plaintext" id="{{ form.realname.id_for_label }}" value="{% if form.realname.value() %}{{ form.realname.value() }}{% endif %}" placeholder="Name e.g. 'Application Master'">
+            </div>
+        </div>
+
+        <div class="form-group row mt-4" style="max-height: 35px">
+            <div class="col-sm-12">
+              <input class="input_underline" type="email" name="{{ form.email.html_name }}" class="form-control-plaintext" id="{{ form.email.id_for_label }}" placeholder="Email Address">
+            </div>
+        </div>
+
+       <div class="form-group row mt-4">
+          <div class="col-6 mt-2">
+            <input class="input_underline" type="password" name="{{ form.password.html_name }}" class="form-control-plaintext" id="{{ form.password.id_for_label }}" placeholder="Password" required>
+          </div>
+          <div class="col-6 mt-2">
+            <input class="input_underline" type="password" name="{{ form.password_confirm.html_name }}" class="form-control-plaintext" id="{{ form.password_confirm.id_for_label }}" placeholder="Confirm Password" required>
+          </div>
+        </div>
+
+        <div class="form-group row mt-4">
+          <div class="col-3 mt-2">
+            <p class="text-muted">Enter Days to Expire</p>
+            <p class="small text-muted">Must be between 30 and 365 days.</p>
+          </div>
+          <div class="col-2 mt-2">
+            <input class="input_underline" type="number" name="{{ form.expire_date.html_name }}" class="form-control-plaintext" id="{{ form.expire_date.id_for_label }}" min=30 max=365 value=90 required>
+          </div>
+        </div>
+
+        {% if form.password.errors %}
+          <div class="row mt-5">
+            <div class="col-12">
+              {% for error in form.password.errors %}
+                <small class="text-danger">{{ error|safe }}</small><br>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if form.password_confirm.errors %}
+        <div class="row mt-5">
+          <div class="col-12">
+            {% for error in form.password_confirm.errors %}
+              <small class="text-danger">{{ error|safe }}</small><br>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <div class=row>
+          <div class="col-6">
+            <div class="form-group row mt-2">
+              <div class="col-12">
+                  <small class="lead">Password Policy:</small>
+              </div>
+              <div class="cols-12">
+                  <small class="text-muted">
+                    <ul>
+                      <li>Your password can't be too similar to your other personal information.</li>
+                      <li>Your password must contain at least 12 characters.</li>
+                      <li>Your password can't be a commonly used password.</li>
+                      <li>Your password can't be entirely numeric.</li>
+                    </ul>
+                  </small>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="form-group row mt-2" style="max-height: 35px">
+              {% if form.realname.errors %}
+                <div class="col-sm-12">
+                  {% for error in form.realname.errors %}
+                    <small class="text-danger">{{ error|safe }}</small><br>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if form.errors %}
+                <div class="col-sm-12">
+                  {% for error in form.errors %}
+                    <small class="text-danger">{{ error|safe }}</small><br>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+         </div>
+
+      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+      </fieldset>
+      <div class="row mt-5">
+        <div class="form-group col-md-4 offset-md-4 mt-2">
+          <button type="submit" class="btn btn-primary btn-block">Submit</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

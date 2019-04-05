@@ -1,0 +1,156 @@
+{% extends 'master_layout.html' %}
+
+{% block title %}<title>Penguin - Generating Keys</title>{% endblock %}
+{% block stylesheets %}
+<link href="{{ static('css/generate_key.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="card mt-5">
+  <div class="card-body">
+    <fieldset>
+      <div class="row">
+        <div class="col-9">
+          <legend>Generating a New GPG Keypair</legend>
+          <p class="small">This may take a minute or two.</p>
+        </div>
+        <div class="col-3 mt-3">
+          <button id="debugButton" class="btn btn-block btn-secondary">Show Debug Console</button>
+        </div>
+      </div>
+      <hr>
+      <div class="form-group row">
+        <div id="message_window" class='col-12'>
+          <p id="status_message" class="lead text-center">Click the Button Below to Start Key Generation</p>
+        </div>
+        <div id="debug_row" class='col-12 mb-3' style="display:none">
+          <textarea id="debug_window" readonly></textarea>
+        </div>
+        <div id="priv_key_row" class='col-5 offset-1 mb-3' style="display:none">
+          <textarea id="priv_key_window" class="key_window" readonly></textarea>
+        </div>
+        <div id="pub_key_row" class='col-5 mb-3' style="display:none">
+          <textarea id="pub_key_window" class="key_window" readonly></textarea>
+        </div>
+      </div>
+      <div class="row mt-3">
+        <div class="form-group col-md-4 offset-4">
+          <button id="superButton" class="btn btn-primary btn-block">
+            Start Key Generation
+          </button>
+        </div>
+      </div>
+    </fieldset>
+  </div>
+</div>
+{% endblock %}
+<!-- {% if request.session['websocket_uuid'] %} {{ request.session['websocket_uuid'] }} {% else %} null {% endif %}; -->
+{% block extra_scripts %}
+<script type="text/javascript">
+$(document).ready(function() {
+  {% if 'proceed' in request.session and request.session.proceed %}
+    var dots = "<span class='dot'></span><span class='dot'></span><span class='dot'></span>";
+    var msg_queue = [];
+
+    var channel = {% if 'websocket_uuid' in request.session %}"{{request.session.websocket_uuid}}"{% else %}null{% endif %};
+    if (channel !== null) {
+        var socket = new WebSocket('wss://' + window.location.host + '/ws/' + channel + '/');
+
+        socket.onmessage = function(e) {
+            var data = JSON.parse(e.data);
+            console.log(data)
+
+            if (data['message']['message_type'] == 'debug_response') {
+                if (data['message']['message'] !== undefined) {
+                    $('#debug_window').val($('#debug_window').val() + '\n' + data['message']['message']);
+                } else {
+                    delete data['message']['message_type'];
+
+                    $.each(data, function(key, value) {
+                        $.each(value, function(index, value) {
+                            $('#debug_window').val($('#debug_window').val() + "\n" + index + ": " + value);
+                        });
+                    });
+                }
+                $('#debug_window').scrollTop($('#debug_window')[0].scrollHeight);
+            } else if (data['message']['message_type'] == 'background_response') {
+                if (data['message']['status'] == 'key_complete') {
+                    $("#superButton").html("Finished");
+                    $("#superButton").attr("disabled", "disabled");
+
+                    $("#debug_row").fadeOut(function() {
+                        $("#message_window").append("<p class='small text-center'>THESE KEYS WILL NOT BE SHOWN AGAIN. SAVE IN A SAFE PLACE AND ENSURE YOU MAKE BACKUPS.</p>")
+                        $("#priv_key_window").text(data['message']['message']['private'])
+                        $("#priv_key_row").fadeIn(500);
+                        $("#pub_key_window").text(data['message']['message']['public'])
+                        $("#pub_key_row").fadeIn(500);
+
+                        msg_queue.push("Keys Created");
+                    });
+                } else if (data['message']['status'] == 'key_complete_fingerprint') {
+                    $("#superButton").html("Finished");
+                    $("#superButton").attr("disabled", "disabled");
+                    $("#debug_row").fadeOut(function() {
+                        $("#message_window").append("<p class='lead text-center'>" + data['message']['message'] + "</p>")
+                        $("#message_window").append("<p class='small text-center'>Please set the master fingerprint as follows in the settings.py:<br> GNUPG_MASTER_FINGERPRINT = " + data['message']['message'] + "</p>")
+                    });
+
+                    msg_queue.push("Keys Created");
+
+                } else if (data['message']['status'] == 'key_failed') {
+                    $("#superButton").html("Task Failed");
+                    $("#superButton").attr("disabled", "disabled");
+                    msg_queue.push(data['message']['message']);
+                }
+
+            } else if (data['message']['message_type'] == 'application_response') {
+                msg_queue.push(data['message']['message']);
+            }
+        }
+
+        socket.onclose = function(e) {
+            console.error('Socket Closed without Reason');
+        }
+
+        $('#superButton').on('click', function(e) {
+            $(this).attr("disabled", "disabled");
+            socket.send(JSON.stringify({
+                'message': {
+                    "action": "debug"
+                }
+            }));
+            socket.send(JSON.stringify({
+                'message': {
+                    "action": "CreateKey",
+                    "uuid": channel
+                }
+            }));
+            $(this).html(dots);
+        });
+
+        $("#debugButton").on('click', function(e) {
+            $("#debug_row").fadeToggle(500);
+            $('#debug_window').scrollTop($('#debug_window')[0].scrollHeight);
+        });
+
+        setInterval(function() {
+            if (msg_queue.length !== 0) {
+                msg_queue.reverse();
+                message = msg_queue.pop();
+                $("#status_message").fadeOut(function() {
+                    $("#status_message").text(message).fadeIn(500);
+                });
+            }
+        }, 1500);
+
+    } else {
+        $("#superButton").attr("disabled", "disabled").html("Invalid State")
+        $('#message_window').html("<p class='lead text-center'>You do not have the required session state to continue. Please go back and submit the previous form again.</p>");
+    }
+  {% else %}
+    $("#superButton").attr("disabled", "disabled").html("Invalid State")
+    $('#message_window').html("<p class='lead text-center'>You do not have the required session state to continue. Please go back and submit the previous form again.</p>");   
+  {% endif %} 
+});
+</script>
+{% endblock %}

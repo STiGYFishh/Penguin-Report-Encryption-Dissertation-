@@ -1,0 +1,45 @@
+{% extends 'account/account_layout.html' %}
+
+{% block title %}<title>Penguin - Login</title>{% endblock %}
+
+{% block content %}
+<div class="card mt-5">
+  <div class="card-body">
+    <form method="POST">
+      <fieldset>
+        <legend>Sign in to your Account</legend>
+        <hr>
+        <div class="form-group row mt-5" style="max-height: 35px">
+            <div class="col-sm-12">
+              <input class="input_underline" type="text" name="{{ form.username.html_name }}" class="form-control-plaintext" id="{{ form.username.id_for_label }}" value="{% if form.username.value() %}{{ form.username.value() }}{% endif %}" placeholder="Username">
+            </div>
+        </div>
+
+        <div class="form-group row mt-4" style="max-height: 35px">
+            <div class="col-sm-12">
+              <input class="input_underline" type="password" name="{{ form.password.html_name }}" class="form-control-plaintext" id="{{ form.password.id_for_label }}" placeholder="Password">
+            </div>
+        </div>
+        <small class="text-muted"><a href="/account/forgotten">Forgotten your Password?</a></small>
+
+        <div class="form-group row mt-2" style="max-height: 35px">
+          {% if form.non_field_errors() %}
+            <div class="col-sm-12">
+              {% for error in form.non_field_errors() %}
+                <small class="text-danger">{{ error|safe }}</small><br>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+      </fieldset>
+      <div class="row mt-5">
+        <div class="form-group col-md-4 offset-md-2 mt-2">
+          <button type="submit" class="btn btn-primary btn-block">Submit</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

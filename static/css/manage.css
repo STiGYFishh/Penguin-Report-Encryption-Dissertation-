@@ -1,0 +1,16 @@
+.manage-menu{
+	padding-left: 0 !important;
+	list-style: none;
+}
+
+.manage-menu li {
+	cursor: pointer;
+}
+
+.manage-menu li:hover {
+	background-color: rgba(0,0,0,0.1);
+}
+
+.manage-menu li:active {
+	background-color: rgba(0,0,0,0.1);
+}
