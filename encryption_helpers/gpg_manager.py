@@ -88,7 +88,7 @@ class KeyManager(GPGManager):
         self.gpg.trust_keys(fingerprints, trust_level)
 
     def generate_master_keypair(self, name, email, passphrase):
-        key = self.create_key(name, email, "")
+        key = self.create_key(name, email, passphrase)
         self.trust_keys([key.fingerprint], 'TRUST_ULTIMATE')
 
         return key.fingerprint
@@ -129,7 +129,7 @@ class EncryptionManager(GPGManager):
     def secure_remove(self, file):
         try:
             secure_rm = subprocess.check_call(['srm', '-s', file])
-        except subprocess.CalledProccessError:
+        except subprocess.CalledProcessError:
             raise EnvironmentError('srm failed to securely erase the original plaintext file')
 
         return secure_rm
@@ -163,6 +163,7 @@ class EncryptionManager(GPGManager):
 
             with open(document_fullpath, 'rb') as file_stream:
                 encrypted_data = self.gpg.encrypt_file(file_stream, recipients, always_trust=True)
+
                 if not encrypted_data.ok:
                     layer = get_channel_layer()
                     async_to_sync(layer.send)(
@@ -178,7 +179,6 @@ class EncryptionManager(GPGManager):
 
             file_content = ContentFile(file_content)
             document.document.save(f'{document_name}.gpg', file_content)
-            print(f'{document_path}.gpg')
             document.checksum = checksum
             document.save()
 
@@ -202,16 +202,34 @@ class EncryptionManager(GPGManager):
             document_fullpath = os.path.join(settings.MEDIA_ROOT, document.document.name)
             save_path = os.path.join(settings.MEDIA_ROOT, "TMP", str(uuid.uuid4()))
 
+            print(document_fullpath)
+
             with open(document_fullpath, 'rb') as encrypted_data:
                 decrypted_file = self.gpg.decrypt_file(encrypted_data,
                     passphrase=passphrase,
-                    output=save_path
+                    output=save_path,
                 )
 
                 if not decrypted_file.ok:
-                    return {'status': 'error', 'message':document.status}
+                    layer = get_channel_layer()
+                    async_to_sync(layer.send)(
+                        'secure-remove',
+                        {
+                        'type':'remove',
+                        'file': save_path,
+                        }
+                    )
+                    return {'status': 'error', 'message':decrypted_file.status}
 
                 if not self.sha256_checksum(save_path) == document.checksum:
+                    layer = get_channel_layer()
+                    async_to_sync(layer.send)(
+                        'secure-remove',
+                        {
+                        'type':'remove',
+                        'file': save_path,
+                        }
+                    )
                     return {'status': 'error', 'message':'Checksum does not match original file.'}
 
             return {'status':'OK', 'document':save_path}
@@ -220,9 +238,11 @@ class EncryptionManager(GPGManager):
 
     def re_encrypt(self, file_uuid, passphrase):
         document = Document.objects.filter(pk=file_uuid).first()
+        original_encrypted_document = os.path.join(settings.MEDIA_ROOT, document.document.name)
 
         if document:
             decrypted_file = self.decrypt(file_uuid, passphrase)
+            print("dec", decrypted_file)
 
             if decrypted_file['status'] == 'OK':
                 decrypted_file = decrypted_file['document']
@@ -231,14 +251,25 @@ class EncryptionManager(GPGManager):
                 document.document.save(f'{document.title}', file_content)
                 document.save()
 
+                layer = get_channel_layer()
+                async_to_sync(layer.send)(
+                    'secure-remove',
+                    {
+                    'type':'remove',
+                    'file': decrypted_file,
+                    }
+                )
+
             else:
                 return decrypted_file
 
+            self.secure_remove(original_encrypted_document)
+
             encrypted_data = self.encrypt(file_uuid)
-            del decrypted_file
+            print("enc", encrypted_data)
 
             if not encrypted_data['status'] == 'OK':
-                return {'status': False, 'message':encryted_data}
+                return {'status': False, 'message':encrypted_data}
 
             return {'status':True}
         return {'status': 'error', 'message':'File does not Exist.'}

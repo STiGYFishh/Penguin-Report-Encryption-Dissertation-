@@ -3,9 +3,10 @@ from channels.consumer import SyncConsumer
 from channels.generic.websocket import WebsocketConsumer
 
 from core.encryption_helpers import gpg_manager
-from core.models import PGPKey
+from core.models import PGPKey, Document, DocumentType
 
 from django.conf import settings
+from django.contrib.auth.models import User, Group
 
 import json, uuid
 
@@ -69,7 +70,7 @@ class InfoRelayConsumer(WebsocketConsumer):
                     {
                     'type':'encrypt',
                     'session': {
-                        'websocket_uuid':self.session['websocket_uuid'],
+                        'websocket_uuid':self.session['enc_websocket_uuid'],
                         'document_uuid':self.session['document_upload_id']
                         }
                     }
@@ -92,7 +93,6 @@ class InfoRelayConsumer(WebsocketConsumer):
                     'gpg-document-handler',
                     {
                     'type':'re_encrypt',
-                    'data': message_data['data'],
                     'websocket_uuid': self.room_name,
                     }
                 )
@@ -125,7 +125,7 @@ class InfoRelayConsumer(WebsocketConsumer):
                         self.scope["session"].save()
 
                     if message_data['status'] == 'ENC_DONE':
-                        self.scope['session'].pop('websocket_uuid', None)
+                        self.scope['session'].pop('enc_websocket_uuid', None)
                         self.scope['session'].pop('document_upload_id', None)
                         self.scope['session'].pop('encrypt_command_sent', None)
                         self.scope["session"].save()
@@ -368,16 +368,22 @@ class GPGDocumentConsumer(SyncConsumer):
             )                  
 
     def re_encrypt(self, message):
-        async_to_sync(self.channel_layer.group_send)(
-            f"GPG_{message['websocket_uuid']}",
-            {
-            'type':'group.message',
-            'message':{
-                'message_type':'application_response',
-                'message':'Starting Re-Encryption...'
-                }
-            }
-        )
+        encryption_manager = gpg_manager.EncryptionManager(message['websocket_uuid'])
+        files = []
+
+        for document_type in DocumentType.objects.all():
+            for document in document_type.document_set.all():
+                files.append(str(document.id))
+
+        print(files)
+
+        count = 0
+        for file in files:
+            encryption_manager.re_encrypt(file, "Pa2jL6MeRi234627893")
+            count += 1
+
+            print(f'Re-Encrypted Document with ID {file}: {count}/{len(files)}')
+
 
 class SecureRemoveConsumer(SyncConsumer):
     def remove(self, message):

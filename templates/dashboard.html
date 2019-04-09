@@ -97,7 +97,7 @@
 							{% if documents %}
 								{% for document in documents %}
 									<div class="col-12 pr-0">
-										<p class="text-muted text-center clickable">{{ document.title }}</p>
+										<p class="text-center"><a class="text-muted clickable" href="/decrypt/{{ document.id }}">{{ document.title }}</a></p>
 									</div>
 								{% endfor %}
 							{% else %}
@@ -162,7 +162,7 @@
 			}
 		});
 
-		{% if 'websocket_uuid' in request.session %}
+		{% if 'enc_websocket_uuid' in request.session %}
 
 			msg_queue = []
 	        var socket = new WebSocket('wss://' + window.location.host + '/ws/' + '{{ request.session.enc_websocket_uuid }}' + '/');

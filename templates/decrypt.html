@@ -15,6 +15,16 @@
 					<div class="col-9">
 						<legend class="lead">Decrypt</legend>
 					</div>
+                    {% if not 'private_unlocked' in request.session %}
+                        </div>
+                            <div class="col-12">
+                                <p class="lead text-center">Please Unlock Your Private Key! You can do this on the Dashboard.</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                    {% else %}
 				        <div class="col-3 mt-3">
 				          <button id="debugButton" class="btn btn-block btn-secondary">Show Debug Console</button>
 				        </div>
@@ -40,8 +50,10 @@
 		</div>
 	</div>
 </div>
+{% endif %}
 {% endblock %}
 {% block extra_scripts %}
+{% if 'private_unlocked' in request.session %}
 <script type="text/javascript">
 	$(document).ready(function(){
 		msg_queue = []
@@ -105,4 +117,5 @@
 
 	});
 </script>
+{% endif %}
 {% endblock %}
